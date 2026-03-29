@@ -1,0 +1,89 @@
+# =============================================================================
+# GitHub Actions Workflow: Build and Publish Docker Image to GHCR
+# =============================================================================
+#
+# Purpose:
+#   Builds a Docker container image and publishes it to the GitHub Container
+#   Registry (ghcr.io) on every push to master, and on manual invocation.
+#   Applies both a 'latest' tag and a semantic-version tag derived from the
+#   Git tag present on the commit (if any), plus a short-SHA tag for
+#   unambiguous traceability.
+#
+# Pulling the image locally:
+#   docker pull ghcr.io/<owner>/mikrotik-mcp:latest
+#
+# Running the container locally (environment variables are the recommended
+# way to pass configuration — see docker-entrypoint.sh for the full list):
+#
+#   docker run --rm \
+#     -e MIKROTIK_HOST=192.168.88.1 \
+#     -e MIKROTIK_USERNAME=admin \
+#     -e MIKROTIK_PASSWORD=secret \
+#     -e MIKROTIK_PORT=22 \
+#     -e MIKROTIK_MCP__TRANSPORT=stdio \
+#     ghcr.io/<owner>/mikrotik-mcp:latest
+#
+# Triggers:
+#   - Push to master branch
+#   - Manual workflow dispatch
+#
+# =============================================================================
+name: Build and Publish Docker Image to GHCR
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Generates OCI-standard image metadata and a consistent set of tags:
+      #   • latest       — always applied on master / manual dispatch
+      #   • semver tags  — only applied when the triggering commit is annotated with
+      #                    a vX.Y.Z git tag (e.g. pushed via the PyPI release workflow);
+      #                    skipped silently when no matching tag is present
+      #   • sha-<short>  — applied for every build for traceability
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=true
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
