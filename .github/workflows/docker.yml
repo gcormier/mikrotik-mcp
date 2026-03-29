@@ -53,9 +53,8 @@ jobs:
 
       # Generates OCI-standard image metadata and a consistent set of tags:
       #   • latest       — always applied on master / manual dispatch
-      #   • semver tags  — only applied when the triggering commit is annotated with
-      #                    a vX.Y.Z git tag (e.g. pushed via the PyPI release workflow);
-      #                    skipped silently when no matching tag is present
+      #   • semver tags  — only applied when the triggering commit carries a vX.Y.Z
+      #                    git tag; skipped silently when no matching tag is present
       #   • sha-<short>  — applied for every build for traceability
       - name: Extract Docker metadata
         id: meta
