@@ -46,63 +46,75 @@ HTTP-based transports (`sse`, `streamable-http`) expose a `GET /health` endpoint
 
 ## Docker Installation
 
-The easiest way to run the MCP MikroTik server is using Docker.
+The easiest way to run the MCP MikroTik server is using Docker. The pre-built image is available on the GitHub Container Registry — no local build required.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/jeff-nasseri/mikrotik-mcp.git
-   cd mikrotik-mcp
-   ```
+```bash
+docker pull ghcr.io/gcormier/mikrotik-mcp:latest
+```
 
-2. **Build the Docker image:**
-   ```bash
-   docker build -t mikrotik-mcp .
-   ```
+### Transport modes
 
-3. **Run with stdio (default, for IDE integration):**
+The Docker container supports two operating modes controlled by `MIKROTIK_MCP__TRANSPORT`:
 
-   Add this to your `~/.cursor/mcp.json`:
-   ```json
-   {
-     "mcpServers": {
-       "mikrotik-mcp-server": {
-         "command": "docker",
-         "args": [
-           "run",
-           "--rm",
-           "-i",
-           "-e", "MIKROTIK_HOST=192.168.88.1",
-           "-e", "MIKROTIK_USERNAME=sshuser",
-           "-e", "MIKROTIK_PASSWORD=your_password",
-           "-e", "MIKROTIK_PORT=22",
-           "mikrotik-mcp"
-         ]
-       }
-     }
-   }
-   ```
+| Mode | Transport value | Container lifecycle | Best for |
+|------|----------------|---------------------|----------|
+| **Persistent server** *(default)* | `sse` or `streamable-http` | Stays running, listens on port 8000 | Shared/remote deployments, any client that connects over HTTP |
+| **stdio** | `stdio` | Started and stopped by the MCP client per session | Local IDE integrations (Cursor, Claude Desktop) that manage the container as a subprocess |
 
-4. **Run with SSE or streamable HTTP transport:**
+### Persistent server (default)
 
-   ```bash
-   docker run --rm -p 8000:8000 \
-     -e MIKROTIK_HOST=192.168.88.1 \
-     -e MIKROTIK_USERNAME=sshuser \
-     -e MIKROTIK_PASSWORD=your_password \
-     -e MIKROTIK_MCP__TRANSPORT=sse \
-     mikrotik-mcp
-   ```
+By default the container starts an **SSE server** on port 8000 and remains open waiting for connections. This is the recommended mode for most deployments.
 
-   The server will be available at `http://localhost:8000/sse` (SSE) or `http://localhost:8000/mcp` (streamable HTTP).
+```bash
+docker run -d \
+  -p 8000:8000 \
+  -e MIKROTIK_HOST=192.168.88.1 \
+  -e MIKROTIK_USERNAME=admin \
+  -e MIKROTIK_PASSWORD=your_password \
+  ghcr.io/gcormier/mikrotik-mcp:latest
+```
 
-   **Environment Variables:**
+The server will be available at:
+- **SSE:** `http://localhost:8000/sse`
+- **Streamable HTTP** (use `MIKROTIK_MCP__TRANSPORT=streamable-http`): `http://localhost:8000/mcp`
 
-   | Variable | Description | Default |
-   |----------|-------------|---------|
-   | `MIKROTIK_HOST` | MikroTik device IP/hostname | `192.168.88.1` |
-   | `MIKROTIK_USERNAME` | SSH username | `admin` |
-   | `MIKROTIK_PASSWORD` | SSH password | _(empty)_ |
-   | `MIKROTIK_PORT` | SSH port | `22` |
-   | `MIKROTIK_MCP__TRANSPORT` | Transport type: `stdio`, `sse`, `streamable-http` | `stdio` |
-   | `MIKROTIK_MCP__HOST` | HTTP server listen address | `0.0.0.0` |
-   | `MIKROTIK_MCP__PORT` | HTTP server listen port | `8000` |
+A `GET /health` endpoint is also available for health checks.
+
+### stdio mode (for IDE / desktop client integration)
+
+If your MCP client (e.g. Cursor, Claude Desktop) manages the container as a subprocess over stdin/stdout, set the transport to `stdio`. The client spawns the container when needed and the container exits when the session ends.
+
+Add this to your `~/.cursor/mcp.json` or equivalent client config:
+
+```json
+{
+  "mcpServers": {
+    "mikrotik-mcp-server": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "MIKROTIK_HOST=192.168.88.1",
+        "-e", "MIKROTIK_USERNAME=admin",
+        "-e", "MIKROTIK_PASSWORD=your_password",
+        "-e", "MIKROTIK_PORT=22",
+        "-e", "MIKROTIK_MCP__TRANSPORT=stdio",
+        "ghcr.io/gcormier/mikrotik-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+> **Note:** The `-i` flag is required to keep stdin open so the MCP client can communicate with the container.
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MIKROTIK_HOST` | MikroTik device IP/hostname | `192.168.88.1` |
+| `MIKROTIK_USERNAME` | SSH username | `admin` |
+| `MIKROTIK_PASSWORD` | SSH password | _(empty)_ |
+| `MIKROTIK_PORT` | SSH port | `22` |
+| `MIKROTIK_MCP__TRANSPORT` | Transport type: `sse`, `streamable-http`, `stdio` | `sse` |
+| `MIKROTIK_MCP__HOST` | HTTP server listen address | `0.0.0.0` |
+| `MIKROTIK_MCP__PORT` | HTTP server listen port | `8000` |
